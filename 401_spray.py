@@ -207,7 +207,7 @@ def check_creds(opts):
         timeB = time()
         elapsedTimeMs = round((timeB - timeA) * 1000, 2)
 
-        if res.status_code != 401 and res.status_code != 403:
+        if res.status_code != 401:
             status = "[VALID]"
             if track_time:
                 output = f"{status} {username}:{password}  - {elapsedTimeMs}ms"
