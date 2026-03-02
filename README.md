@@ -24,17 +24,18 @@ usage: 401_spray.py [-h] [-u USERNAMES] [-p PASSWORDS] [-c USERPASS] [-d DOMAIN]
 
 options:
   -h, --help            show this help message and exit
-  -u, --usernames USERNAMES
+  -u USERNAMES, --usernames USERNAMES
                         List of usernames to attack
-  -p, --passwords PASSWORDS
+  -p PASSWORDS, --passwords PASSWORDS
                         List of passwords to try
-  -c, --userpass USERPASS
+  -c USERPASS, --userpass USERPASS
                         File containing user/password combinations
-  -d, --domain DOMAIN   Domain name to append. If not included, then domains will be assumed to be in username list.
-  -U, --url URL         URL to authenticate against
-  -a, --attempts ATTEMPTS
+  -d DOMAIN, --domain DOMAIN
+                        Domain name to append. If not included, then domains will be assumed to be in username list.
+  -U URL, --url URL     URL to authenticate against
+  -a ATTEMPTS, --attempts ATTEMPTS
                         Number of attempts to try before sleeping. If your lockout policy is 5 attempts per 10 minutes, then set this to like 3
-  -i, --interval INTERVAL
+  -i INTERVAL, --interval INTERVAL
                         Number of minutes to sleep between attacks. If your lockout policy is per 10 minutes, set this to like 11
   --authtype {ntlm,basic}
                         Authentication type - basic or ntlm. Note: You can't use a proxy with NTLM
@@ -47,5 +48,8 @@ options:
   --enum                Username enumeration mode (timing attack)
   --enum-threshold ENUM_THRESHOLD
                         Timing threshold in ms for username enumeration (default: 500)
-
+  --valid-respcode VALID_RESPCODE
+                        Comma-separated HTTP status codes to explicitly treat as valid (e.g. 200,301,302,403)
+  --invalid-respcode INVALID_RESPCODE
+                        Comma-separated HTTP status codes to explicitly treat as invalid (e.g. 401,500)
 ```
